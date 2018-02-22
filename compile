@@ -1,0 +1,1 @@
+g++ Board.cpp NeuralNetwork.cpp NNTest.cpp -Wno-narrowing -Wno-cpp -O3 -mavx -fopenmp -std=c++1y
