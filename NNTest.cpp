@@ -8,19 +8,21 @@ using std::cout;
 
 void timeNN(NeuralNetwork & net, vector<char> & board)
 {
-  int avgNum = 100000;
+  int avgNum = 1000000;
   std::chrono::high_resolution_clock clock;
   std::chrono::nanoseconds ellapsed (0);
+  auto start = clock.now();
+  #pragma omp parallel for
   for(int i = 0; i < avgNum; i++)
   {
-    auto start = clock.now();
       net.GetBoardEvaluation(false, board);
-      auto diff = clock.now() - start;
-      auto ns = std::chrono::duration_cast<std::chrono::nanoseconds> (diff);
-      ellapsed += ns;
   }
+  auto diff = clock.now() - start;
+  auto ns = std::chrono::duration_cast<std::chrono::nanoseconds> (diff);
+  ellapsed += ns;
   cout<<"average time over "<<avgNum<<" iterations\n";
   cout<<"with "<<net.getNeuronCount()<<" neurons over "<<net.getWeightCount()<<" weights: "<<ellapsed.count()/avgNum<<" ns\n";
+  cout<<(double)(1.0e9/(ellapsed.count()/avgNum))<<" board evaluations per second\n";
 }
 
 int main()
@@ -43,11 +45,11 @@ int main()
   NeuralNetwork test2({32, 112, 80, 64, 16, 1});
 
 
-  cout<<"Test board has 3x red pieces than black, random weights [-.2,.2]\n";
+  cout<<"Test board has 3x more red pieces than black, random weights [-.2,.2]\n";
   cout<<"4 Layer Network output\n";
   cout<< "Black evaluation: "<<test.GetBoardEvaluation(false, board)<<"\n";
   cout<< "Red evaluation: "<<test.GetBoardEvaluation(true, board)<<"\n";
-  cout<<"6 Layer Network output (Red then Black)\n";
+  cout<<"6 Layer Network output\n";
   cout<< "Black evaluation: "<<test2.GetBoardEvaluation(false, board)<<"\n";
   cout<< "Red evaluation: "<<test2.GetBoardEvaluation(true, board)<<"\n";
 
