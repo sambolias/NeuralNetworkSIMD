@@ -27,7 +27,6 @@ class NeuralNetwork
   __m256 getRandomWeight();
   float getLayerEvaluation();
   float simdSumOfFloats(__m256 floats);
-  __m256 exp256_ps(__m256 x);
 
 //save/load functions
   std::vector<float> parseFile(std::string fname);
