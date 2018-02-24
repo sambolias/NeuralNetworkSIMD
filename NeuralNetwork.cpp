@@ -185,7 +185,7 @@ __m256 NeuralNetwork::sigmoidFunction(__m256 x)
   __m256 _two = _mm256_broadcast_ss(&two);
 
   //return 2.0 / (1 + pow(e, (-s * x))) - 1;
-  __m256 _sig = (_two / (_one + exp256_ps(_s*x))) - _one;
+  __m256 _sig = _mm256_sub_ps(_mm256_div_ps(_two, (_mm256_add_ps(_one , exp256_ps(_mm256_mul_ps(_s,x))))) , _one);
   return _sig;
 }
 
@@ -296,7 +296,7 @@ float NeuralNetwork::getLayerEvaluation()
       for (int previousNeuronsIndex = 0; previousNeuronsIndex < previousLayerSize; ++previousNeuronsIndex)
       {
         weightsIndex = previousLayerSize * neuronsIndex + previousNeuronsIndex;
-        currentNeurons = currentNeurons + ((*_weights[previousLayer][weightsIndex]) * (*_neurons[previousLayer][previousNeuronsIndex]));
+        currentNeurons = _mm256_add_ps(currentNeurons , (_mm256_mul_ps((*_weights[previousLayer][weightsIndex]) , (*_neurons[previousLayer][previousNeuronsIndex]))));
       }
       currentNeurons = sigmoidFunction(currentNeurons);
       _neurons[layer][neuronsIndex] = &currentNeurons;
@@ -311,7 +311,7 @@ float NeuralNetwork::getLayerEvaluation()
   for (int previousNeuronsIndex = 0; previousNeuronsIndex < lastLayerSize; ++previousNeuronsIndex)
   {
     int weightsIndex = previousNeuronsIndex;
-    outputNeuronInput += simdSumOfFloats((*_weights[lastLayer][weightsIndex]) * (*_neurons[lastLayer][previousNeuronsIndex]));
+    outputNeuronInput += simdSumOfFloats(_mm256_mul_ps((*_weights[lastLayer][weightsIndex]) , (*_neurons[lastLayer][previousNeuronsIndex])));
   }
   //add in _pieceCount
   outputNeuronInput += pieceCountWeight*_pieceCount;
