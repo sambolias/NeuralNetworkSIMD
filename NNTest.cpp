@@ -20,8 +20,9 @@ void timeNN(NeuralNetwork & net, vector<char> & board)
   auto diff = clock.now() - start;
   auto ns = std::chrono::duration_cast<std::chrono::nanoseconds> (diff);
   ellapsed += ns;
-  cout<<"average time over "<<avgNum<<" iterations\n";
-  cout<<"with "<<net.getNeuronCount()<<" neurons over "<<net.getWeightCount()<<" weights: "<<ellapsed.count()/avgNum<<" ns\n";
+  cout<<"average time over "<<avgNum<<" evaluations\n";
+  cout<<"with "<<net.getNeuronCount()<<" neurons over "<<net.getWeightCount()<<" weights: \n";
+  cout<<ellapsed.count()/avgNum<<" ns per evaluation\n";
   cout<<(double)(1.0e9/(ellapsed.count()/avgNum))<<" board evaluations per second\n";
 }
 

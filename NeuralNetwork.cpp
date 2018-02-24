@@ -6,6 +6,8 @@ using std::make_shared;
 #include <iostream>
 using std::cout;
 using std::endl;
+#include <string>
+using std::string;
 #include <cstdlib>
 #include <ctime>
 using std::srand;
@@ -14,11 +16,20 @@ using std::time;
 using std::pow;
 #include "Board.hpp"
 #include "NeuralNetwork.hpp"
-#include "avx_mathfun.h"
+
+//this doesnt work on windows
+//source http://software-lisc.fbk.eu/avx_mathfun/
+//TODO find license info
+//#include "avx_mathfun.h"
+
+//this one doesnt work on linux, need macro to include correct lib for os
+//#include "avx_exp.h"
+
 
 //format like (N0, N1, N2,..., Ni) where N is the number of neurons in the given layer i
 NeuralNetwork::NeuralNetwork(const std::vector<int> & layers)
 {
+  //TODO make sure all but last layers are multiples of 8
 
   if (layers.empty() || (layers[0] != 32))
   {
@@ -34,6 +45,57 @@ NeuralNetwork::NeuralNetwork(const std::vector<int> & layers)
   resetNeurons();
   randomizeWeights();
 
+}
+
+//TODO make augFlag augment weights randomly - need some augmentation factor too that can be saved i think
+NeuralNetwork::NeuralNetwork(std::string fname, bool augFlag)
+{
+  vector<float> raw = parseFile(fname);
+  if(!raw.empty())
+  {
+    //set other variables
+    vector<int> layers(raw[0]);
+    int idx = 1;
+    for(idx; idx < 1+raw[0]; idx++)
+    {
+      layers[idx-1] = raw[idx];
+    }
+    _layers = layers;
+    kingValue = raw[idx];
+    cout<<"kingValue="<<kingValue<<"\n";
+    pieceCountWeight = raw[++idx];
+    cout<<"pieceCountWeight="<<pieceCountWeight<<"\n";
+
+    float * f = &raw[0];
+    //set weights
+
+    for (int layer = 0; layer < _layers.size() - 1; layer++)
+    {
+      _weights[layer] = vector<__m256*>((_layers[layer] * _layers[layer + 1])/8);
+      for (int weightIndex = 0; weightIndex < _weights[layer].size(); ++weightIndex)
+      {
+        __m256 weight = _mm256_load_ps(&f[idx]);
+        _weights[layer][weightIndex] = &weight;
+        idx+=8; //grabbing 8 raw weights at a time
+      }
+    }
+  }
+  else
+  {
+    //TODO make some bad flag for network
+  }
+
+}
+bool NeuralNetwork::saveNetwork(std::string fname)
+{
+  //TODO write to file #of layers / Layers / kingValue/ pieceCountWeight / weights
+  return false;
+}
+vector<float> NeuralNetwork::parseFile(std::string fname)
+{
+  //TODO parse directly into vector - same format as saveNetwork
+  vector<float> values;
+  return values;
 }
 
 int NeuralNetwork::getNeuronCount()
@@ -68,7 +130,7 @@ void NeuralNetwork::randomizeWeights()
     for (int weightIndex = 0; weightIndex < _weights[layer].size(); ++weightIndex)
     {
       __m256 randoms = getRandomWeight();
-      _weights[layer][weightIndex] = &randoms;//getRandomWeight();
+      _weights[layer][weightIndex] = &randoms;
     }
   }
   //set pieceCountWeight
@@ -108,7 +170,7 @@ float NeuralNetwork::sigmoidFunction(float x)
 {
 	const float s = 4;
 	const float e = 2.718281828;
-	// Can graph this function to make sure on [-1,1] : 2 / (1 + e^-sx) - 1
+	// [-1,1] : 2 / (1 + e^-sx) - 1
 	return 2.0 / (1 + pow(e, (-s * x))) - 1;
 }
 
@@ -117,27 +179,37 @@ __m256 NeuralNetwork::sigmoidFunction(__m256 x)
 {
 	const float s = -4.;
   __m256 _s = _mm256_broadcast_ss(&s);
-	// const float e = 2.718281828;
-  // __m256 _e = _mm256_broadcast_ss(&e);
   const float one = 1.;
   __m256 _one = _mm256_broadcast_ss(&one);
   const float two = 2.;
   __m256 _two = _mm256_broadcast_ss(&two);
+
   //return 2.0 / (1 + pow(e, (-s * x))) - 1;
   __m256 _sig = (_two / (_one + exp256_ps(_s*x))) - _one;
   return _sig;
-
 }
 
+/*  alternate sigmoids not dependant on exponent - cross platform
+float NeuralNetwork::sigmoidFunction(float x)
+{
+	return x / (1 + abs(x));
+}
+__m256 NeuralNetwork::sigmoidFunction(__m256 x)
+{
+	const float one = 1.;
+	__m256 _one = _mm256_broadcast_ss(&one);
+	//ugly square root for abs() = sqrt(x*x)...
+	return _mm256_div_ps(x, (_mm256_add_ps(_mm256_sqrt_ps(_mm256_mul_ps(x, x)), _one)));
+}
+*/
 float NeuralNetwork::GetBoardEvaluation(bool isRedPlayer, const vector<char> & board)
 {
-  //resetNeurons();
   float input;
   char boardSquare;
   vector<float> firstLayer(_layers[0]);
   _pieceCount = 0;
 
-//probably make assert
+//TODO probably make assert
   if(firstLayer.size() != board.size())
     cout<<"bad board in GetBoardEvaluation()\n";
 
@@ -257,4 +329,91 @@ float NeuralNetwork::simdSumOfFloats(__m256 floats)
     sum += f[i];
 
   return sum;
+}
+
+//doesnt work in linux, needs define
+//ported for windows from avx_mathfun.h
+//source http://software-lisc.fbk.eu/avx_mathfun/
+__m256 NeuralNetwork::exp256_ps(__m256 x) {
+  __m256 tmp = _mm256_setzero_ps(), fx;
+  __m256i imm0;
+  float t = 1.;
+  __m256 one = _mm256_broadcast_ss(&t);
+
+  t = 88.3762626647949f;
+  __m256 _ps256_exp_hi = _mm256_broadcast_ss(&t);
+  x = _mm256_min_ps(x, _ps256_exp_hi);
+  t = -88.3762626647949f;
+  __m256 _ps256_exp_lo = _mm256_broadcast_ss(&t);
+  x = _mm256_max_ps(x, _ps256_exp_lo);
+
+  /* express exp(x) as exp(g + n*log(2)) */
+  t = 1.44269504088896341;
+  __m256 _ps256_cephes_LOG2EF = _mm256_broadcast_ss(&t);
+  fx = _mm256_mul_ps(x, _ps256_cephes_LOG2EF);
+  t = 0.5f;
+  __m256 _ps256_0p5 = _mm256_broadcast_ss(&t);
+  fx = _mm256_add_ps(fx, _ps256_0p5);
+
+  /* how to perform a floorf with SSE: just below */
+  //imm0 = _mm256_cvttps_epi32(fx);
+  //tmp  = _mm256_cvtepi32_ps(imm0);
+
+  tmp = _mm256_floor_ps(fx);
+
+  /* if greater, substract 1 */
+  //__m256 mask = _mm256_cmpgt_ps(tmp, fx);
+  //int _CMP_GT_OS = 13;  //check this
+  __m256 mask = _mm256_cmp_ps(tmp, fx, 13);
+  mask = _mm256_and_ps(mask, one);
+  fx = _mm256_sub_ps(tmp, mask);
+
+  t = 0.693359375;
+  __m256 _ps256_cephes_exp_C1 = _mm256_broadcast_ss(&t);
+  tmp = _mm256_mul_ps(fx, _ps256_cephes_exp_C1);
+  t = -2.12194440e-4;
+  __m256 _ps256_cephes_exp_C2 = _mm256_broadcast_ss(&t);
+  __m256 z = _mm256_mul_ps(fx, _ps256_cephes_exp_C2);
+  x = _mm256_sub_ps(x, tmp);
+  x = _mm256_sub_ps(x, z);
+
+  z = _mm256_mul_ps(x,x);
+
+  t = 1.9875691500E-4;
+  __m256 _ps256_cephes_exp_p0 = _mm256_broadcast_ss(&t);
+  t = 1.3981999507E-3;
+  __m256 _ps256_cephes_exp_p1 = _mm256_broadcast_ss(&t);
+  t = 8.3334519073E-3;
+  __m256 _ps256_cephes_exp_p2 = _mm256_broadcast_ss(&t);
+  t = 4.1665795894E-2;
+  __m256 _ps256_cephes_exp_p3 = _mm256_broadcast_ss(&t);
+  t = 1.6666665459E-1;
+  __m256 _ps256_cephes_exp_p4 = _mm256_broadcast_ss(&t);
+  t = 5.0000001201E-1;
+  __m256 _ps256_cephes_exp_p5 = _mm256_broadcast_ss(&t);
+  __m256 y = _ps256_cephes_exp_p0;
+  y = _mm256_mul_ps(y, x);
+  y = _mm256_add_ps(y, _ps256_cephes_exp_p1);
+  y = _mm256_mul_ps(y, x);
+  y = _mm256_add_ps(y, _ps256_cephes_exp_p2);
+  y = _mm256_mul_ps(y, x);
+  y = _mm256_add_ps(y, _ps256_cephes_exp_p3);
+  y = _mm256_mul_ps(y, x);
+  y = _mm256_add_ps(y, _ps256_cephes_exp_p4);
+  y = _mm256_mul_ps(y, x);
+  y = _mm256_add_ps(y, _ps256_cephes_exp_p5);
+  y = _mm256_mul_ps(y, z);
+  y = _mm256_add_ps(y, x);
+  y = _mm256_add_ps(y, one);
+
+  /* build 2^n */
+  imm0 = _mm256_cvttps_epi32(fx);
+  // another two AVX2 instructions
+  int tt = 0x7f;
+  __m256i _pi32_256_0x7f = _mm256_set1_epi32(tt);
+  imm0 = _mm256_add_epi32(imm0, _pi32_256_0x7f);
+  imm0 = _mm256_slli_epi32(imm0, 23);
+  __m256 pow2n = _mm256_castsi256_ps(imm0);
+  y = _mm256_mul_ps(y, pow2n);
+  return y;
 }
