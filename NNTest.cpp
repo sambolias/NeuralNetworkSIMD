@@ -29,7 +29,6 @@ void timeNN(NeuralNetwork & net, vector<char> & board)
 int main()
 {
 
-
   vector<char> board =  {
                         'r','r','r','r',
                         'r','r','r','r',
@@ -44,7 +43,8 @@ int main()
 
   NeuralNetwork test({32, 40, 16, 1});
   NeuralNetwork test2({32, 112, 80, 64, 16, 1});
-
+  test2.saveNetwork("test.save.txt");
+  NeuralNetwork test3("test.save.txt", false);
 
   cout<<"Test board has 3x more red pieces than black, random weights [-.2,.2]\n";
   cout<<"4 Layer Network output\n";
@@ -53,6 +53,9 @@ int main()
   cout<<"6 Layer Network output\n";
   cout<< "Black evaluation: "<<test2.GetBoardEvaluation(false, board)<<"\n";
   cout<< "Red evaluation: "<<test2.GetBoardEvaluation(true, board)<<"\n";
+  cout<<"Output from saved/loaded copy of above network\n";
+  cout<< "Black evaluation: "<<test3.GetBoardEvaluation(false, board)<<"\n";
+  cout<< "Red evaluation: "<<test3.GetBoardEvaluation(true, board)<<"\n";
 
   //timing
   timeNN(test, board);

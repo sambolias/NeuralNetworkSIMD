@@ -14,8 +14,14 @@ using std::srand;
 using std::time;
 #include <cmath>
 using std::pow;
+#include <fstream>
+using std::ofstream;
+using std::ifstream;
+#include <exception>
+using std::exception;
 #include "Board.hpp"
 #include "NeuralNetwork.hpp"
+
 
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
 //this one doesnt work on linux
@@ -54,6 +60,7 @@ NeuralNetwork::NeuralNetwork(std::string fname, bool augFlag)
   vector<float> raw = parseFile(fname);
   if(!raw.empty())
   {
+    cout<<raw.size()<<"\n";
     //set other variables
     vector<int> layers(raw[0]);
     int idx = 1;
@@ -63,16 +70,21 @@ NeuralNetwork::NeuralNetwork(std::string fname, bool augFlag)
     }
     _layers = layers;
     kingValue = raw[idx];
-    cout<<"kingValue="<<kingValue<<"\n";
+    //cout<<"kingValue="<<kingValue<<"\n";
     pieceCountWeight = raw[++idx];
-    cout<<"pieceCountWeight="<<pieceCountWeight<<"\n";
+    //cout<<"pieceCountWeight="<<pieceCountWeight<<"\n";
 
-    float * f = &raw[0];
+    srand(time(0));
+    resetNeurons();
+
+    //TODO augment weights here if flag is set - using correct distribution (can be added to savefile)
     //set weights
-
+    float * f = &raw[idx];
+    _weights = vector<vector<__m256*>>(_layers.size());
     for (int layer = 0; layer < _layers.size() - 1; layer++)
     {
       _weights[layer] = vector<__m256*>((_layers[layer] * _layers[layer + 1])/8);
+
       for (int weightIndex = 0; weightIndex < _weights[layer].size(); ++weightIndex)
       {
         __m256 weight = _mm256_load_ps(&f[idx]);
@@ -85,17 +97,57 @@ NeuralNetwork::NeuralNetwork(std::string fname, bool augFlag)
   {
     //TODO make some bad flag for network
   }
-
 }
 bool NeuralNetwork::saveNetwork(std::string fname)
 {
-  //TODO write to file #of layers / Layers / kingValue/ pieceCountWeight / weights
-  return false;
+  //write to file #of layers / Layers / kingValue/ pieceCountWeight / weights
+  ofstream ofs(fname);
+  try
+  {
+    ofs<<_layers.size()<<" ";
+    for(auto l : _layers)
+      ofs<<l<<" ";
+    ofs<<kingValue<<" ";
+    ofs<<pieceCountWeight<<" ";
+    for(int layer = 0; layer < _weights.size(); layer++)
+      for(int idx = 0; idx < _weights[layer].size(); idx++)
+      {
+        float f[8];
+        _mm256_store_ps(&f[0], *_weights[layer][idx]);
+        for(int i = 0; i < 8; i++)
+          ofs<<f[i]<<" ";
+      }
+  }
+  catch(exception & e)
+  {
+    cout<<e.what();
+    ofs.close();
+    return false;
+  }
+  ofs.close();
+  return true;
 }
 vector<float> NeuralNetwork::parseFile(std::string fname)
 {
-  //TODO parse directly into vector - same format as saveNetwork
+  //parse directly into vector - same format as saveNetwork
   vector<float> values;
+  ifstream ifs(fname);
+  try
+  {
+    while(!ifs.eof())
+    {
+      float temp;
+      ifs >> temp;
+      values.push_back(temp);
+    }
+  }
+  catch(exception & e)
+  {
+    cout<<e.what();
+    ifs.close();
+    return vector<float>();
+  }
+  ifs.close();
   return values;
 }
 
@@ -291,9 +343,8 @@ float NeuralNetwork::getLayerEvaluation()
     __m256 currentNeurons;
     for (int neuronsIndex = 0; neuronsIndex < layerSize; ++neuronsIndex)
     {
-        currentNeurons = zeros;
-        //openmp slows it way down, too small of problem to justify threads I think
-  //    #pragma omp parallel for reduction(+:currentNeurons)
+      currentNeurons = zeros;
+
       for (int previousNeuronsIndex = 0; previousNeuronsIndex < previousLayerSize; ++previousNeuronsIndex)
       {
         weightsIndex = previousLayerSize * neuronsIndex + previousNeuronsIndex;
@@ -308,7 +359,7 @@ float NeuralNetwork::getLayerEvaluation()
   float outputNeuronInput = 0;
   int lastLayer = _layers.size()-2;
   int lastLayerSize = _layers[lastLayer]/8;
-//   #pragma omp parallel for reduction(+:outputNeuronInput) num_threads(4)
+
   for (int previousNeuronsIndex = 0; previousNeuronsIndex < lastLayerSize; ++previousNeuronsIndex)
   {
     int weightsIndex = previousNeuronsIndex;
